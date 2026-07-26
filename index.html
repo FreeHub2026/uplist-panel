@@ -619,9 +619,11 @@
     const link = document.getElementById("orderLink").value.trim();
     const quantity = Number(document.getElementById("orderQty").value);
     modalResult.className = "modal-result";
-    modalResult.textContent = "";
+    modalResult.textContent = "Redirecting to secure checkout…";
+    const submitBtn = orderForm.querySelector("button[type=submit]");
+    submitBtn.disabled = true;
     try {
-      const res = await fetch("/api/order", {
+      const res = await fetch("/api/create-checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ service: activeService.id, link, quantity }),
@@ -629,16 +631,25 @@
       const data = await res.json();
       if (!res.ok || data.error) {
         modalResult.className = "modal-result err";
-        modalResult.textContent = data.error || "Something went wrong placing this order.";
+        modalResult.textContent = data.error || "Something went wrong starting checkout.";
+        submitBtn.disabled = false;
       } else {
-        modalResult.className = "modal-result ok";
-        modalResult.textContent = `Order placed — ID ${data.order}. Use "Track an order" below to follow progress.`;
+        window.location.href = data.url; // Stripe places the order via webhook once payment succeeds
       }
     } catch (err) {
       modalResult.className = "modal-result err";
-      modalResult.textContent = "Could not reach the order backend.";
+      modalResult.textContent = "Could not reach checkout.";
+      submitBtn.disabled = false;
     }
   });
+
+  // ---- Checkout return banner ----
+  const checkoutState = new URLSearchParams(window.location.search).get("checkout");
+  if (checkoutState === "success") {
+    alert("Payment received — your order has been sent to the supplier automatically.");
+  } else if (checkoutState === "cancelled") {
+    alert("Checkout was cancelled — no charge was made.");
+  }
 
   // ---- Track order ----
   document.getElementById("trackBtn").addEventListener("click", async () => {
