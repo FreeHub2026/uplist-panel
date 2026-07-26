@@ -190,6 +190,44 @@
   .dot.limited{ background:var(--copper); }
   .status-text{ font-size:var(--fs-xs); color:var(--muted); }
   tr[hidden]{ display:none; }
+  .buy-btn{
+    font-family:var(--font-mono); font-size:var(--fs-xs); letter-spacing:0.04em; text-transform:uppercase;
+    padding:6px 12px; border-radius:3px; border:1px solid var(--accent); color:var(--accent); background:transparent;
+  }
+  .buy-btn:hover{ background:var(--accent); color:var(--accent-ink); }
+  .buy-btn:disabled{ opacity:0.4; cursor:not-allowed; }
+
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(8,17,13,0.55); display:none; align-items:center; justify-content:center;
+    padding:20px; z-index:50;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal{
+    background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:28px; width:100%; max-width:420px;
+    box-shadow:var(--shadow);
+  }
+  .modal h3{ font-size:var(--fs-md); margin-bottom:4px; }
+  .modal .modal-sub{ font-family:var(--font-mono); font-size:var(--fs-xs); color:var(--muted); margin-bottom:18px; }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:var(--fs-xs); color:var(--muted); margin-bottom:6px; font-family:var(--font-mono); letter-spacing:0.04em; text-transform:uppercase; }
+  .field input{
+    width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:4px; background:var(--surface);
+    color:var(--ink); font-size:var(--fs-sm); font-family:var(--font-body);
+  }
+  .field input:focus{ outline:none; border-color:var(--accent); }
+  .modal-actions{ display:flex; gap:10px; margin-top:20px; }
+  .modal-actions .btn{ flex:1; }
+  .modal-close{ background:none; border:none; float:right; font-size:var(--fs-md); color:var(--muted); }
+  .modal-result{ margin-top:14px; font-family:var(--font-mono); font-size:var(--fs-xs); padding:10px 12px; border-radius:4px; display:none; }
+  .modal-result.ok{ display:block; background:rgba(63,203,152,0.12); color:var(--accent); }
+  .modal-result.err{ display:block; background:var(--copper-soft); color:var(--copper); }
+
+  .track-box{
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:14px; padding:16px;
+    border:1px dashed var(--line); border-radius:6px; background:var(--surface);
+  }
+  .track-box input{ flex:1; min-width:160px; padding:9px 12px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--ink); font-family:var(--font-mono); font-size:var(--fs-sm); }
+  .track-result{ font-family:var(--font-mono); font-size:var(--fs-xs); color:var(--muted); width:100%; }
 
   /* ---------- Steps ---------- */
   .steps{ display:grid; grid-template-columns:repeat(4,1fr); gap:20px; }
@@ -332,6 +370,7 @@
             <th>Max</th>
             <th>Avg. start</th>
             <th>Status</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -339,8 +378,37 @@
         </tbody>
       </table>
     </div>
+
+    <div class="track-box">
+      <span class="status-text" style="font-family:var(--font-mono); white-space:nowrap;">Track an order</span>
+      <input id="trackOrderId" type="text" placeholder="Order ID" />
+      <button class="btn btn-ghost" id="trackBtn" type="button">Check status</button>
+      <div class="track-result" id="trackResult"></div>
+    </div>
   </div>
 </section>
+
+<div class="modal-overlay" id="orderModal">
+  <div class="modal">
+    <button class="modal-close" id="modalClose" aria-label="Close">×</button>
+    <h3 id="modalServiceName">Order service</h3>
+    <p class="modal-sub" id="modalServiceMeta"></p>
+    <form id="orderForm">
+      <div class="field">
+        <label for="orderLink">Link / username</label>
+        <input id="orderLink" type="text" required placeholder="https://instagram.com/yourprofile" />
+      </div>
+      <div class="field">
+        <label for="orderQty">Quantity</label>
+        <input id="orderQty" type="number" required />
+      </div>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-solid">Place order</button>
+      </div>
+      <div class="modal-result" id="modalResult"></div>
+    </form>
+  </div>
+</div>
 
 <section id="how">
   <div class="wrap">
@@ -515,10 +583,79 @@
         <td class="num">${s.max.toLocaleString()}</td>
         <td class="num">${s.start}</td>
         <td>${statusMarkup(s.status)}</td>
+        <td><button class="buy-btn" data-id="${s.id}" ${s.status === "offline" ? "disabled" : ""}>Buy</button></td>
       </tr>
     `).join("");
   }
   render();
+
+  // ---- Order modal ----
+  const modal = document.getElementById("orderModal");
+  const orderForm = document.getElementById("orderForm");
+  const modalResult = document.getElementById("modalResult");
+  let activeService = null;
+
+  document.querySelector("#boardTable tbody").addEventListener("click", (e) => {
+    const btn = e.target.closest(".buy-btn");
+    if (!btn) return;
+    activeService = services.find(s => s.id === btn.dataset.id);
+    document.getElementById("modalServiceName").textContent = activeService.name;
+    document.getElementById("modalServiceMeta").textContent =
+      `${activeService.id} · $${activeService.rate.toFixed(2)} / 1k · min ${activeService.min.toLocaleString()} · max ${activeService.max.toLocaleString()}`;
+    document.getElementById("orderQty").min = activeService.min;
+    document.getElementById("orderQty").max = activeService.max;
+    document.getElementById("orderQty").value = activeService.min;
+    modalResult.className = "modal-result";
+    modalResult.textContent = "";
+    orderForm.reset();
+    document.getElementById("orderQty").value = activeService.min;
+    modal.classList.add("open");
+  });
+  document.getElementById("modalClose").addEventListener("click", () => modal.classList.remove("open"));
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.classList.remove("open"); });
+
+  orderForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const link = document.getElementById("orderLink").value.trim();
+    const quantity = Number(document.getElementById("orderQty").value);
+    modalResult.className = "modal-result";
+    modalResult.textContent = "";
+    try {
+      const res = await fetch("/api/order", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ service: activeService.id, link, quantity }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        modalResult.className = "modal-result err";
+        modalResult.textContent = data.error || "Something went wrong placing this order.";
+      } else {
+        modalResult.className = "modal-result ok";
+        modalResult.textContent = `Order placed — ID ${data.order}. Use "Track an order" below to follow progress.`;
+      }
+    } catch (err) {
+      modalResult.className = "modal-result err";
+      modalResult.textContent = "Could not reach the order backend.";
+    }
+  });
+
+  // ---- Track order ----
+  document.getElementById("trackBtn").addEventListener("click", async () => {
+    const id = document.getElementById("trackOrderId").value.trim();
+    const result = document.getElementById("trackResult");
+    if (!id) { result.textContent = "Enter an order ID first."; return; }
+    result.textContent = "Checking…";
+    try {
+      const res = await fetch(`/api/status?order=${encodeURIComponent(id)}`);
+      const data = await res.json();
+      result.textContent = (!res.ok || data.error)
+        ? (data.error || "Could not look up that order.")
+        : `Status: ${data.status} · Remains: ${data.remains ?? "—"} · Start count: ${data.start_count ?? "—"}`;
+    } catch (err) {
+      result.textContent = "Could not reach the order backend.";
+    }
+  });
 
   // ---- Tabs ----
   const tabs = document.querySelectorAll("#platformTabs .tab");
